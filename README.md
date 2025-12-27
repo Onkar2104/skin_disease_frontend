@@ -98,7 +98,9 @@ npm install -g expo-cli
 ```
 2. Clone the repository:
 ```bash
-git clone https://github.com/Onkar2104/skin_disease_frontend.git
+git clone https://github.com/Onkar2104/skin_disease_frontend.git   
+cd skin_disease_frontend
+cd skin-disease-app  
 ```
 
 3. Install Dependencies
@@ -117,7 +119,7 @@ Then:
 
 5. Access the app in your browser at:
 ```bash
-  http://localhost:8000/api/predict/
+  http://localhost:8000
 ```
 
 ---
