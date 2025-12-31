@@ -1,5 +1,4 @@
-// app/auth/register.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,298 +6,463 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { Picker } from "@react-native-picker/picker";
+import {
+  User,
+  Mail,
+  Lock,
+  Calendar,
+  Droplet,
+  CheckCircle,
+} from "lucide-react-native";
+import { useRouter } from "expo-router";
 
-import { User, Mail, Lock, Calendar, Droplet } from "lucide-react-native";
+import { sendRegisterOtp, verifyRegisterOtp } from "../../services/auth";
 
 const isWeb = Platform.OS === "web";
 
-type RegisterProps = {
-  onSwitch?: () => void;
-  onRegister?: (data: {
-    name: string;
-    email: string;
-    pwd: string;
-    age: string;
-    gender: string;
-    skinType: string;
-  }) => void;
-};
-
-export default function RegisterScreen({ onSwitch, onRegister }: RegisterProps) {
+export default function RegisterScreen() {
   const router = useRouter();
 
+  /* ---------------- FORM STATES ---------------- */
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
   const [age, setAge] = useState("");
-  const [gender, setGender] = useState<"Male" | "Female" | "Other">("Male");
+  const [gender, setGender] =
+    useState<"Male" | "Female" | "Other">("Male");
   const [skinType, setSkinType] = useState("");
 
-  const handleRegister = () => {
-    // TODO: send data to Django API
-    const data = { name, email, pwd, age, gender, skinType };
-    console.log(data);
-    if (onRegister) {
-      onRegister(data);
-      return;
+  /* ---------------- OTP STATES ---------------- */
+  const [otp, setOtp] = useState("");
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [isOtpVerified, setIsOtpVerified] = useState(false);
+
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [submitLoading, setSubmitLoading] = useState(false);
+
+  /* ---------------- TIMER ---------------- */
+  const [timeLeft, setTimeLeft] = useState(0);
+
+  /* ---------------- BANNERS ---------------- */
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const isOtpValid = otp.length === 6;
+
+  /* ---------------- AUTO CLEAR BANNER ---------------- */
+  useEffect(() => {
+    if (!error && !success) return;
+    const t = setTimeout(() => {
+      setError("");
+      setSuccess("");
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [error, success]);
+
+  /* ---------------- COUNTDOWN ---------------- */
+  useEffect(() => {
+    if (timeLeft <= 0 || isOtpVerified) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((v) => v - 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft, isOtpVerified]);
+
+  /* ---------------- SEND OTP ---------------- */
+  const handleSendOtp = async () => {
+    if (!isEmailValid || timeLeft > 0 || isOtpVerified) return;
+
+    setError("");
+    setSuccess("");
+    setOtpLoading(true);
+
+    try {
+      await sendRegisterOtp({
+        email,
+      });
+
+      setIsOtpSent(true);
+      setTimeLeft(60);
+      setSuccess("OTP sent to your email");
+    } catch (err: any) {
+      setError(err?.error || "Failed to send OTP");
+    } finally {
+      setOtpLoading(false);
     }
-    // after successful registration -> fallback to login route
-    router.replace("/auth/login");
   };
 
-  const goToLogin = () => {
-    if (onSwitch) {
-      onSwitch();
+  /* ---------------- VERIFY OTP ---------------- */
+  const handleVerifyOtp = async () => {
+    if (isOtpVerified || !isOtpValid) return; // ⛔ HARD STOP
+
+    setError("");
+    setVerifyLoading(true);
+
+    try {
+      await verifyRegisterOtp({
+        email, otp,
+        full_name: name,
+        password: pwd,
+        age,
+        gender,
+        skin_type: skinType
+      });
+
+      setIsOtpVerified(true);
+      setIsOtpSent(false);
+      setTimeLeft(0);
+      setSuccess("Email verified successfully ✅");
+    } catch (err: any) {
+      setError(err?.error || "Invalid OTP");
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  /* ---------------- FINAL SUBMIT ---------------- */
+  const handleRegister = async () => {
+    if (!isOtpVerified) {
+      setError("Please verify OTP first");
       return;
     }
-    router.replace("/auth/login");
+
+    setSubmitLoading(true);
+    setError("");
+
+    setTimeout(() => {
+      setSuccess("🎉 Account created successfully!");
+      setSubmitLoading(false);
+
+      setTimeout(() => {
+        router.replace("/auth/login");
+      }, 1200);
+    }, 1200);
   };
 
   return (
-    <View style={styles.screen}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.card}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Fill in your details</Text>
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        isWeb && styles.webCenter,
+      ]}
+    >
+      <View style={styles.card}>
+        <Text style={styles.title}>Create Account</Text>
+        <Text style={styles.subtitle}>Start your skincare journey</Text>
 
-          {/* Name */}
-          <Text style={styles.label}>Full Name</Text>
-          <View style={styles.inputRow}>
-            <User size={18} color="#94a3b8" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="John Doe"
-              placeholderTextColor="#9ca3af"
-              value={name}
-              onChangeText={setName}
-            />
-          </View>
+        {error ? <Banner text={error} type="error" /> : null}
+        {success ? <Banner text={success} type="success" /> : null}
 
-          {/* Email */}
-          <Text style={styles.label}>Email</Text>
-          <View style={styles.inputRow}>
-            <Mail size={18} color="#94a3b8" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="john@example.com"
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
+        <Input
+          icon={<User size={18} />}
+          placeholder="Full Name"
+          value={name}
+          onChangeText={setName}
+          editable={!isOtpVerified}
+        />
 
-          {/* Password */}
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.inputRow}>
-            <Lock size={18} color="#94a3b8" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor="#9ca3af"
-              secureTextEntry
-              value={pwd}
-              onChangeText={setPwd}
-            />
-          </View>
+        {/* EMAIL + VERIFY */}
+        <View style={styles.row}>
+          <Input
+            style={{ flex: 1 }}
+            icon={<Mail size={18} />}
+            placeholder="Email"
+            value={email}
+            keyboardType="email-address"
+            editable={!isOtpVerified}
+            onChangeText={(t: string) => {
+              setEmail(t);
+              if (isOtpSent || isOtpVerified) {
+                setIsOtpSent(false);
+                setIsOtpVerified(false);
+                setOtp("");
+                setTimeLeft(0);
+              }
+            }}
+          />
 
-          {/* Age + Gender */}
-          <View style={styles.row}>
-            <View style={styles.col}>
-              <Text style={styles.label}>Age</Text>
-              <View style={styles.inputRow}>
-                <Calendar size={18} color="#94a3b8" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="25"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="numeric"
-                  value={age}
-                  onChangeText={setAge}
-                />
-              </View>
-            </View>
-
-            <View style={styles.col}>
-              <Text style={styles.label}>Gender</Text>
-              <View style={styles.genderRow}>
-                {["Male", "Female", "Other"].map((g) => (
-                  <TouchableOpacity
-                    key={g}
-                    style={[
-                      styles.genderPill,
-                      gender === g && styles.genderPillActive,
-                    ]}
-                    onPress={() => setGender(g as any)}
-                  >
-                    <Text
-                      style={[
-                        styles.genderText,
-                        gender === g && styles.genderTextActive,
-                      ]}
-                    >
-                      {g}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Skin type dropdown */}
-          <Text style={styles.label}>Skin Type</Text>
-          <View style={styles.pickerRow}>
-            <Droplet size={18} color="#94a3b8" style={styles.inputIcon} />
-            <Picker
-              selectedValue={skinType}
-              onValueChange={(v) => setSkinType(v)}
-              style={styles.picker}
-            >
-              <Picker.Item label="Select skin type" value="" />
-              <Picker.Item label="Normal" value="normal" />
-              <Picker.Item label="Oily" value="oily" />
-              <Picker.Item label="Dry" value="dry" />
-              <Picker.Item label="Combination" value="combination" />
-              <Picker.Item label="Sensitive" value="sensitive" />
-            </Picker>
-          </View>
-
-          <TouchableOpacity
-            style={styles.primaryButton}
-            activeOpacity={0.85}
-            onPress={handleRegister}
-          >
-            <Text style={styles.primaryText}>Create Account</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.switchText}>
-            Already have an account?{"  "}
-            <Text style={styles.switchLink} onPress={goToLogin}>
-              Sign In
-            </Text>
-          </Text>
+          <VerifyButton
+            loading={otpLoading}
+            disabled={!isEmailValid || timeLeft > 0 || isOtpVerified}
+            label={
+              !isOtpSent
+                ? "Verify"
+                : timeLeft > 0
+                ? `RESEND (${timeLeft}s)`
+                : "Resend"
+            }
+            onPress={handleSendOtp}
+          />
         </View>
-      </ScrollView>
+
+        {/* OTP + VERIFY */}
+        {isOtpSent && !isOtpVerified && (
+          <View style={styles.row}>
+            <TextInput
+              style={styles.otpInput}
+              placeholder="Enter OTP"
+              value={otp}
+              keyboardType="numeric"
+              maxLength={6}
+              onChangeText={(t) => setOtp(t.replace(/\D/g, ""))}
+            />
+
+            <VerifyButton
+              loading={verifyLoading}
+              disabled={!isOtpValid}
+              label="Verify"
+              onPress={handleVerifyOtp}
+            />
+          </View>
+        )}
+
+        {isOtpSent && timeLeft > 0 && !isOtpVerified && (
+          <Text style={styles.timerText}>{timeLeft}s remaining</Text>
+        )}
+
+        <Input
+          icon={<Lock size={18} />}
+          placeholder="Password"
+          secureTextEntry
+          value={pwd}
+          onChangeText={setPwd}
+          editable={isOtpVerified}
+        />
+
+        <Input
+          icon={<Calendar size={18} />}
+          placeholder="Age"
+          keyboardType="numeric"
+          value={age}
+          onChangeText={setAge}
+          editable={isOtpVerified}
+        />
+
+        <View style={styles.genderBox}>
+          {["Male", "Female", "Other"].map((g) => (
+            <TouchableOpacity
+              key={g}
+              disabled={!isOtpVerified}
+              style={[
+                styles.genderBtn,
+                gender === g && styles.genderActive,
+                !isOtpVerified && styles.disabled,
+              ]}
+              onPress={() => setGender(g as any)}
+            >
+              <Text
+                style={
+                  gender === g
+                    ? styles.genderTextActive
+                    : styles.genderText
+                }
+              >
+                {g}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View
+          style={[
+            styles.pickerBox,
+            !isOtpVerified && styles.disabled,
+          ]}
+        >
+          <Droplet size={18} />
+          <Picker
+            enabled={isOtpVerified}
+            selectedValue={skinType}
+            onValueChange={setSkinType}
+            style={{ flex: 1 }}
+          >
+            <Picker.Item label="Select skin type" value="" />
+            <Picker.Item label="Normal" value="normal" />
+            <Picker.Item label="Oily" value="oily" />
+            <Picker.Item label="Dry" value="dry" />
+            <Picker.Item label="Combination" value="combination" />
+            <Picker.Item label="Sensitive" value="sensitive" />
+          </Picker>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.submitBtn,
+            (!isOtpVerified || submitLoading) && styles.disabled,
+          ]}
+          disabled={!isOtpVerified || submitLoading}
+          onPress={handleRegister}
+        >
+          {submitLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.submitText}>Create Account</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+/* ---------------- COMPONENTS ---------------- */
+function Input({ icon, style, editable = true, ...props }: any) {
+  return (
+    <View style={[styles.inputBox, !editable && styles.disabled, style]}>
+      {icon}
+      <TextInput style={styles.input} editable={editable} {...props} />
     </View>
   );
 }
 
+function VerifyButton({ loading, disabled, label, onPress }: any) {
+  return (
+    <TouchableOpacity
+      style={[styles.verifyBtn, disabled && styles.disabled]}
+      disabled={disabled}
+      onPress={onPress}
+    >
+      {loading ? (
+        <ActivityIndicator color="#fff" />
+      ) : (
+        <Text style={styles.verifyText}>{label}</Text>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+function Banner({ text, type }: any) {
+  return (
+    <View
+      style={[
+        styles.banner,
+        type === "error" ? styles.error : styles.success,
+      ]}
+    >
+      <Text style={styles.bannerText}>{text}</Text>
+    </View>
+  );
+}
+
+/* ---------------- STYLES ---------------- */
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
+  container: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: 16,
     backgroundColor: "#f1f5f9",
-    paddingHorizontal: 16,
   },
-  scrollContent: {
-    paddingVertical: 32,
-    alignItems: "center",
-  },
+  webCenter: { alignItems: "center" },
   card: {
     width: "100%",
-    maxWidth: 480,
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  title: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
-  subtitle: { fontSize: 13, color: "#64748b", marginBottom: 8 },
-
-  label: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginTop: 12,
-    marginBottom: 4,
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    padding: 20,
   },
 
-  inputRow: {
+  title: { fontSize: 24, fontWeight: "800" },
+  subtitle: { color: "#64748b", marginBottom: 10 },
+
+  banner: { padding: 10, borderRadius: 12, marginBottom: 10 },
+  error: { backgroundColor: "#fee2e2" },
+  success: { backgroundColor: "#dcfce7" },
+  bannerText: { textAlign: "center", fontWeight: "700" },
+
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 999,
-    backgroundColor: "#ffffff",
-    borderWidth: 2,          // ⬆ thicker
+    borderWidth: 2,
     borderColor: "#e2e8f0",
+    borderRadius: 999,
     paddingHorizontal: 14,
-    height: 52,              // ⬆ taller
+    height: 54,
+    marginBottom: 10,
   },
-  inputIcon: { marginRight: 8 },
+
   input: {
     flex: 1,
     fontSize: 14,
     color: "#0f172a",
     borderWidth: 0,
-    outlineStyle: "none" as any,  // remove inner border on web
+    outlineStyle: "none" as any,
     paddingVertical: 0,
   },
 
-  row: { flexDirection: "row", gap: 12 },
-  col: { flex: 1 },
+  row: { flexDirection: "row", gap: 8, marginBottom: 10 },
 
-  genderRow: {
+  verifyBtn: {
+    backgroundColor: "#0f766e",
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    justifyContent: "center",
+  },
+
+  verifyText: { color: "#fff", fontWeight: "800" },
+
+  otpInput: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    height: 54,
+    fontSize: 16,
+  },
+
+  timerText: {
+    textAlign: "center",
+    color: "#0f766e",
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+
+  genderBox: {
     flexDirection: "row",
     backgroundColor: "#e5e7eb",
     borderRadius: 999,
-    padding: 3,
+    padding: 4,
+    marginBottom: 10,
   },
-  genderPill: {
-    flex: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  genderPillActive: { backgroundColor: "#0f766e" },
-  genderText: { fontSize: 11, color: "#4b5563", fontWeight: "600" },
-  genderTextActive: { color: "#ecfdf5" },
 
-  pickerRow: {
+  genderBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  genderActive: { backgroundColor: "#0f766e" },
+  genderText: { color: "#4b5563" },
+  genderTextActive: { color: "#fff", fontWeight: "700" },
+
+  pickerBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 999,
-    backgroundColor: "#ffffff",
     borderWidth: 2,
     borderColor: "#e2e8f0",
-    paddingHorizontal: 8,
-    height: 52,
-    marginTop: 2,
-  },
-  picker: {
-    flex: 1,
-    height: 44,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    marginBottom: 10,
   },
 
-  primaryButton: {
-    marginTop: 20,
+  submitBtn: {
     backgroundColor: "#0f766e",
-    borderRadius: 16,
-    paddingVertical: 14,
+    height: 56,
+    borderRadius: 18,
     alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
   },
-  primaryText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
 
-  switchText: {
-    textAlign: "center",
-    marginTop: 18,
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  switchLink: {
-    color: "#0f766e",
-    fontWeight: "700",
-  },
+  submitText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+
+  disabled: { opacity: 0.5 },
 });

@@ -1,6 +1,7 @@
 // app/index.tsx
 
 import React, { useState } from "react";
+import { saveScan } from "../../services/storage";
 import {
   View,
   Text,
@@ -12,7 +13,8 @@ import {
   Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { DJANGO_API } from "../constants/api";
+import { predictSkinDisease } from "../../services/api";
+import { DJANGO_API } from "../../constants/api";
 import {
   Camera,
   Image as ImageIcon,
@@ -81,6 +83,9 @@ interface ScanHistory {
   severity: Severity;
 }
 
+
+
+
 // ---------- Mock Data ----------
 const DOCTORS: Doctor[] = [
   {
@@ -126,7 +131,15 @@ export default function App() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
-  
+
+
+  const DetailRow = ({ label, value }: { label: string; value: string }) => (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+
 
   // ---------- Image pick ----------
   const pickFromGallery = async () => {
@@ -165,40 +178,96 @@ export default function App() {
   };
 
 
-    const runPrediction = async (uri: string) => {
+  const runPrediction = async (uri: string) => {
     setAnalyzing(true);
     setResult(null);
 
     try {
-      const formData = new FormData();
+      const data = await predictSkinDisease({ uri, name: "skin.jpg", type: "image/jpeg" });
+      console.log("Prediction raw:", data);
 
-      formData.append("image", {
-        uri: imageUri,
-        name: "skin.jpg",
-        type: "image/jpeg",
-      } as any);
+      // try common response shapes
+      let payload: any = data?.result ?? data?.prediction ?? data ?? {};
+      if (Array.isArray(payload) && payload.length > 0) payload = payload[0];
 
-      const response = await fetch(DJANGO_API.PREDICT_URL, {
-        method: "POST",
-        body: formData, // ❗ no headers
-      });
+      // fallback into common wrapper fields
+      payload = payload ?? data?.predictions?.[0] ?? data?.results?.[0] ?? payload;
 
-      const data = await response.json();
-      console.log("Prediction:", data);
+      // extract label from many possible keys / nesting
+      let label: string = "";
+      if (typeof payload === "string") {
+        label = payload;
+      } else if (payload && typeof payload === "object") {
+        label =
+          (payload.class ??
+            payload.label ??
+            payload.diagnosis ??
+            payload.name ??
+            payload.label_name ??
+            payload.prediction ??
+            "") as string;
 
+        if (!label && Array.isArray(payload.labels) && payload.labels.length) {
+          label = payload.labels[0];
+        }
 
-      const label = data.class;
-      const confidence = Math.round(data.confidence * 100) + "%";
+        if (!label && Array.isArray(payload.predictions) && payload.predictions[0]) {
+          label =
+            payload.predictions[0].label ??
+            payload.predictions[0].class ??
+            payload.predictions[0].name ??
+            "";
+        }
+      }
+
+      label = (label || "").toLowerCase().trim();
+
+      // build diagnosis display name
+      const diagnosisFromPayload =
+        payload?.diagnosis_name ?? payload?.name ?? payload?.disease ?? "";
+      const diagnosis =
+        CLASS_FULL_FORM[label] ?? diagnosisFromPayload ?? label ?? "Unknown";
+
+      // normalize confidence
+      let confidenceVal: any =
+        payload?.confidence ??
+        payload?.probability ??
+        payload?.score ??
+        payload?.prob ??
+        payload?.conf ??
+        null;
+
+      if ((!confidenceVal || confidenceVal === null) && Array.isArray(payload?.predictions)) {
+        const p = payload.predictions[0] ?? {};
+        confidenceVal = p.confidence ?? p.probability ?? p.score ?? null;
+      }
+
+      let confidence = "--";
+      if (typeof confidenceVal === "number") {
+        confidence =
+          confidenceVal > 1
+            ? `${Math.round(confidenceVal)}%`
+            : `${Math.round(confidenceVal * 100)}%`;
+      } else if (typeof confidenceVal === "string") {
+        const n = parseFloat(confidenceVal as string);
+        if (!isNaN(n)) confidence = n > 1 ? `${Math.round(n)}%` : `${Math.round(n * 100)}%`;
+        else confidence = confidenceVal;
+      }
+
+      if (!diagnosis || diagnosis === "Unknown") {
+        console.warn("No diagnosis extracted from prediction response", { data });
+      }
 
       setResult({
-        diagnosis: CLASS_FULL_FORM[label] ?? label,
+        diagnosis,
         confidence,
-        severity: getSeverity(label),
-        advice: data.advice ?? "Consult a dermatologist if symptoms persist.",
-        isSafe: !["mel", "bcc", "scc"].includes(label),
+        severity: (payload?.severity as Severity) ?? getSeverity(label),
+        advice: payload?.advice ?? payload?.recommendation ?? "Consult a dermatologist if symptoms persist.",
+        isSafe: !(label && ["mel", "bcc", "scc"].includes(label)),
       });
     } catch (e) {
       alert("Prediction failed. Check backend.");
+      console.error(e);
     } finally {
       setAnalyzing(false);
     }
@@ -210,93 +279,6 @@ export default function App() {
     setResult(null);
     setAnalyzing(false);
   };
-
-  // // ---------- Fake AI ----------
-  // const simulateAnalysis = async () => {
-  //   setAnalyzing(true);
-  //   setResult(null);
-
-  //   // If no imageUri or no API configured, keep the local simulation
-  //   if (!imageUri || !DJANGO_API.PREDICT_URL) {
-  //     setTimeout(() => {
-  //       setAnalyzing(false);
-  //       setResult({
-  //         diagnosis: "Eczema (Atopic Dermatitis)",
-  //         confidence: "87%",
-  //         severity: "Moderate",
-  //         advice:
-  //           "Keep the area moisturized. Avoid harsh soaps and detergents. Consult a dermatologist if redness persists or spreads.",
-  //         isSafe: true,
-  //       });
-  //     }, 1200);
-  //     return;
-  //   }
-
-  //   try {
-  //     // Prepare form data with the image file URI
-  //     const formData = new FormData();
-  //     // On React Native, file upload fields require { uri, name, type }
-  //     formData.append("image", {
-  //       uri: imageUri,
-  //       name: "scan.jpg",
-  //       type: "image/jpeg",
-  //     } as any);
-
-  //     const headers: any = {
-  //       Accept: "application/json",
-  //     };
-  //     if (DJANGO_API.API_KEY) {
-  //       headers["Authorization"] = `Token ${DJANGO_API.API_KEY}`;
-  //     }
-
-  //     const res = await fetch(DJANGO_API.PREDICT_URL, {
-  //       method: "POST",
-  //       headers,
-  //       body: formData,
-  //     });
-
-  //     if (!res.ok) throw new Error(`API error ${res.status}`);
-
-  //     const data = await res.json();
-  //     // Support multiple response shapes from server: { diagnosis, confidence, ... }
-  //     // or { result: { diagnosis,... } } or { prediction: { label, probability } }
-  //     const payload = data?.result ?? data?.prediction ?? data ?? {};
-  //     const diagnosis =
-  //       payload.diagnosis ?? payload.label ?? payload.name ?? "Unknown";
-
-  //     let confidence: string | number =
-  //       payload.confidence ?? payload.probability ?? payload.score ?? "--";
-  //     // normalize numeric confidence to percentage string
-  //     if (typeof confidence === "number") {
-  //       // if value is 0-1 treat as fraction
-  //       confidence = confidence > 1 ? `${Math.round(confidence)}%` : `${Math.round(confidence * 100)}%`;
-  //     } else if (typeof confidence === "string") {
-  //       const num = parseFloat(confidence);
-  //       if (!isNaN(num)) {
-  //         confidence = num > 1 ? `${Math.round(num)}%` : `${Math.round(num * 100)}%`;
-  //       }
-  //     }
-
-  //     const severity = (payload.severity as Severity) ?? "Low";
-  //     const advice = payload.advice ?? payload.recommendation ?? "";
-  //     const isSafe = payload.isSafe ?? payload.safe ?? true;
-
-  //     setResult({ diagnosis, confidence: String(confidence), severity, advice, isSafe });
-  //   } catch (err) {
-  //     console.warn("Prediction API failed:", err);
-  //     // fallback to local simulated result
-  //     setResult({
-  //       diagnosis: "Eczema (Atopic Dermatitis)",
-  //       confidence: "87%",
-  //       severity: "Moderate",
-  //       advice:
-  //         "Keep the area moisturized. Avoid harsh soaps and detergents. Consult a dermatologist if redness persists or spreads.",
-  //       isSafe: true,
-  //     });
-  //   } finally {
-  //     setAnalyzing(false);
-  //   }
-  // };
 
 
   // ---------- Auth handlers (called by auth screens) ----------
@@ -324,6 +306,22 @@ export default function App() {
     setActiveTab("home");
     resetScan();
   };
+
+  
+
+  const saveResult = async () => {
+    if (!result || !imageUri) return;
+
+    await saveScan({
+      id: Date.now(),
+      date: new Date().toLocaleString(),
+      imageUri,
+      ...result,
+    });
+
+    alert("Scan saved");
+  };
+
 
   // ---------- Header ----------
   const Header = () => (
@@ -407,7 +405,33 @@ export default function App() {
                     </Text>
                   </View>
                 </View>
+                {/* <Text style={styles.resultAdvice}>{result.advice}</Text> */}
+
+
+                <View style={styles.detailsBox}>
+                  <DetailRow label="Disease" value={result.diagnosis} />
+                  <DetailRow label="Confidence" value={result.confidence} />
+                  <DetailRow label="Severity" value={result.severity} />
+                </View>
+
                 <Text style={styles.resultAdvice}>{result.advice}</Text>
+
+                <View style={styles.resultActionsRow}>
+                  <TouchableOpacity style={styles.saveButton} onPress={saveResult}>
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.recheckButton} onPress={() => imageUri && runPrediction(imageUri)}>
+                    <Text style={styles.recheckButtonText}>Recheck</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.retakeButton} onPress={resetScan}>
+                    <RotateCcw size={14} color="#4b5563" />
+                    <Text style={styles.retakeText}>Retake</Text>
+                  </TouchableOpacity>
+                </View>
+
+
                 <View style={styles.resultActionsRow}>
                   <TouchableOpacity
                     style={styles.retakeButton}
@@ -494,8 +518,8 @@ export default function App() {
           item.severity === "High"
             ? styles.severityHigh
             : item.severity === "Moderate"
-            ? styles.severityModerate
-            : styles.severityLow;
+              ? styles.severityModerate
+              : styles.severityLow;
 
         return (
           <View key={item.id} style={styles.historyCard}>
@@ -526,9 +550,8 @@ export default function App() {
           onLogin={handleLogin}
         />
       ) : (
-        <RegisterScreen
-          onRegister={handleRegister}
-        />
+        <RegisterScreen />
+
       )
     ) : (
       <ScrollView
@@ -1082,8 +1105,62 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   tabLabelActive: { color: "#0f766e", fontWeight: "700" },
+
+
+  detailsBox: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+  },
+
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+
+  detailLabel: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontWeight: "600",
+  },
+
+  detailValue: {
+    fontSize: 12,
+    color: "#111827",
+    fontWeight: "700",
+  },
+
+  saveButton: {
+    flex: 1,
+    backgroundColor: "#dcfce7",
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+
+  saveButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#166534",
+  },
+
+  recheckButton: {
+    flex: 1,
+    backgroundColor: "#e0f2fe",
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+
+  recheckButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#075985",
+  },
+
 });
-function runPrediction(uri: string) {
-  throw new Error("Function not implemented.");
-}
+// stray placeholder removed — real `runPrediction` is implemented above
 
