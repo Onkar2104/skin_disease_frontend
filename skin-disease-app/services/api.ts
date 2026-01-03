@@ -1,6 +1,21 @@
 import { Platform } from "react-native";
 import { DJANGO_API } from "../constants/api";
+import { getAccessToken } from "./auth";
 
+export async function authFetch(url: string, options: any = {}) {
+  const token = await getAccessToken();
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+
+// Predict Skin Disease
 export async function predictSkinDisease({
   uri,
   name = "photo.jpg",
@@ -23,13 +38,11 @@ export async function predictSkinDisease({
     form.append("image", { uri, name, type });
   }
 
-  const res = await fetch(DJANGO_API.PREDICT_URL, {
+  const res = await authFetch(DJANGO_API.PREDICT_URL, {
     method: "POST",
     body: form,
-    headers: {
-      Accept: "application/json",
-    },
   });
+
 
   if (!res.ok) {
     const text = await res.text();

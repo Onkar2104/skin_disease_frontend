@@ -1,4 +1,5 @@
 import { DJANGO_API } from "../constants/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /* ---------------- SEND OTP ---------------- */
 export async function sendRegisterOtp(data: {
@@ -20,23 +21,14 @@ export async function sendRegisterOtp(data: {
   return json;
 }
 
-/* ---------------- VERIFY OTP + CREATE USER ---------------- */
+/* ---------------- VERIFY OTP ONLY ---------------- */
 export async function verifyRegisterOtp(data: {
   email: string;
   otp: string;
-  full_name: string;
-  password: string;
-  age: string;
-  gender: string;
-  skin_type: string;
 }) {
   const form = new FormData();
-
-  Object.entries(data).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      form.append(key, value);
-    }
-  });
+  form.append("email", data.email);
+  form.append("otp", data.otp);
 
   const res = await fetch(
     `${DJANGO_API.BASE_URL}/api/auth/register/verify-otp/`,
@@ -49,4 +41,80 @@ export async function verifyRegisterOtp(data: {
   const json = await res.json();
   if (!res.ok) throw json;
   return json;
+}
+
+/* ---------------- FINAL REGISTER ---------------- */
+export async function registerUser(data: {
+  email: string;
+  password: string;
+  full_name: string;
+  age: string;
+  gender: string;
+  skin_type: string;
+}) {
+  const res = await fetch(
+    `${DJANGO_API.BASE_URL}/api/auth/register/`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  const json = await res.json();
+  if (!res.ok) throw json;
+  return json;
+}
+
+
+/* ---------------- LOGOUT ---------------- */
+// export async function logoutUser(token?: string) {
+//   const res = await fetch(
+//     `${DJANGO_API.BASE_URL}/api/auth/logout/`,
+//     {
+//       method: "POST",
+//       headers: token
+//         ? { Authorization: `Bearer ${token}` }
+//         : undefined,
+//     }
+//   );
+
+//   if (!res.ok) {
+//     const err = await res.json();
+//     throw err;
+//   }
+
+//   return res.json();
+// }
+
+
+/* ---------------- LOGIN ---------------- */
+export async function loginUser(data: {
+  email: string;
+  password: string;
+}) {
+  const res = await fetch(`${DJANGO_API.BASE_URL}/api/auth/login/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  const json = await res.json();
+  if (!res.ok) throw json;
+
+  // 🔐 Store tokens
+  await AsyncStorage.setItem("accessToken", json.access);
+  await AsyncStorage.setItem("refreshToken", json.refresh);
+
+  return json;
+}
+
+export async function logoutUser() {
+  await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
+}
+
+export async function getAccessToken() {
+  return AsyncStorage.getItem("accessToken");
 }
