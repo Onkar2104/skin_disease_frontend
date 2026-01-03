@@ -20,7 +20,12 @@ import {
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 
-import { sendRegisterOtp, verifyRegisterOtp } from "../../services/auth";
+import {
+  registerUser,
+  sendRegisterOtp,
+  verifyRegisterOtp
+} from "../../services/auth";
+
 
 const isWeb = Platform.OS === "web";
 
@@ -101,51 +106,61 @@ export default function RegisterScreen() {
 
   /* ---------------- VERIFY OTP ---------------- */
   const handleVerifyOtp = async () => {
-    if (isOtpVerified || !isOtpValid) return; // ⛔ HARD STOP
+  if (isOtpVerified || !isOtpValid) return;
 
-    setError("");
-    setVerifyLoading(true);
+  setError("");
+  setVerifyLoading(true);
 
-    try {
-      await verifyRegisterOtp({
-        email, otp,
-        full_name: name,
-        password: pwd,
-        age,
-        gender,
-        skin_type: skinType
-      });
+  try {
+    await verifyRegisterOtp({
+      email,
+      otp,
+    });
 
-      setIsOtpVerified(true);
-      setIsOtpSent(false);
-      setTimeLeft(0);
-      setSuccess("Email verified successfully ✅");
-    } catch (err: any) {
-      setError(err?.error || "Invalid OTP");
-    } finally {
-      setVerifyLoading(false);
-    }
-  };
+    setIsOtpVerified(true);
+    setIsOtpSent(false);
+    setTimeLeft(0);
+    setSuccess("Email verified successfully ✅");
+  } catch (err: any) {
+    setError(err?.error || "Invalid OTP");
+  } finally {
+    setVerifyLoading(false);
+  }
+};
+
 
   /* ---------------- FINAL SUBMIT ---------------- */
   const handleRegister = async () => {
-    if (!isOtpVerified) {
-      setError("Please verify OTP first");
-      return;
-    }
+  if (!isOtpVerified) {
+    setError("Please verify OTP first");
+    return;
+  }
 
-    setSubmitLoading(true);
-    setError("");
+  setSubmitLoading(true);
+  setError("");
+
+  try {
+    await registerUser({
+      email,
+      password: pwd,
+      full_name: name,
+      age,
+      gender,
+      skin_type: skinType,
+    });
+
+    setSuccess("🎉 Account created successfully!");
 
     setTimeout(() => {
-      setSuccess("🎉 Account created successfully!");
-      setSubmitLoading(false);
-
-      setTimeout(() => {
-        router.replace("/auth/login");
-      }, 1200);
+      router.replace("/auth/login");
     }, 1200);
-  };
+  } catch (err: any) {
+    setError(err?.error || "Registration failed");
+  } finally {
+    setSubmitLoading(false);
+  }
+};
+
 
   return (
     <ScrollView

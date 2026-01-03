@@ -1,6 +1,6 @@
 // app/index.tsx
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { saveScan } from "../../services/storage";
 import {
   View,
@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { predictSkinDisease } from "../../services/api";
-import { DJANGO_API } from "../../constants/api";
 import {
   Camera,
   Image as ImageIcon,
@@ -33,9 +32,12 @@ import {
   LogOut,
 } from "lucide-react-native";
 
-// ⬇️ import auth screens
-import LoginScreen from "../auth/login";
-import RegisterScreen from "../auth/register";
+import { useRouter } from "expo-router";
+
+import { logoutUser } from "../../services/auth";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 
 
 const CLASS_FULL_FORM: Record<string, string> = {
@@ -124,8 +126,34 @@ const HISTORY: ScanHistory[] = [
 const isWeb = Platform.OS === "web";
 
 export default function App() {
+
+  useEffect(() => {
+  const restoreUser = async () => {
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
+      const storedUser = await AsyncStorage.getItem("user");
+
+      if (token && storedUser) {
+        setUser(JSON.parse(storedUser));
+        setIsLoggedIn(true);
+      }
+    } catch (err) {
+      console.log("Failed to restore user:", err);
+      await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
+    }
+  };
+
+  restoreUser();
+}, []);
+
+
+  const [user, setUser] = useState<{
+    id: number;
+    email: string;
+    full_name: string;
+  } | null>(null);
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [authView, setAuthView] = useState<"login" | "register">("login");
 
   const [activeTab, setActiveTab] = useState<"home" | "history" | "profile">("home");
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -282,12 +310,6 @@ export default function App() {
 
 
   // ---------- Auth handlers (called by auth screens) ----------
-  const handleLogin = (email: string, password: string) => {
-    // TODO: connect with Django API
-    console.log("Login:", email, password);
-    setIsLoggedIn(true);
-  };
-
   const handleRegister = (data: {
     name: string;
     email: string;
@@ -301,13 +323,13 @@ export default function App() {
     setIsLoggedIn(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logoutUser();
+
+    setUser(null);
     setIsLoggedIn(false);
     setActiveTab("home");
-    resetScan();
   };
-
-  
 
   const saveResult = async () => {
     if (!result || !imageUri) return;
@@ -328,13 +350,18 @@ export default function App() {
     <View style={styles.header}>
       <View>
         <Text style={styles.appTitle}>DermaCare AI</Text>
-        <Text style={styles.appSubtitle}>Hello, John Doe 👋</Text>
+        {isLoggedIn && user && (
+          <Text style={styles.appSubtitle}>
+            Hello, {user.full_name.split(" ")[0]} 👋
+          </Text>
+        )}
       </View>
       <View style={styles.headerRight}>
         <View style={styles.bellButton}>
           <Bell size={18} color="#475569" />
           <View style={styles.bellDot} />
         </View>
+
         <View style={styles.avatar}>
           <Image
             source={{
@@ -343,8 +370,14 @@ export default function App() {
             style={styles.avatarImage}
           />
         </View>
+
+        {isLoggedIn && (
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutIcon}>
+            <LogOut size={20} color="#b91c1c" />
+          </TouchableOpacity>
+        )}
       </View>
-    </View>
+    </View >
   );
 
   // ---------- Tabs ----------
@@ -542,80 +575,27 @@ export default function App() {
     </ScrollView>
   );
 
-  const ProfileTab = () =>
-    !isLoggedIn ? (
-      authView === "login" ? (
-        <LoginScreen
-          onSwitch={() => setAuthView("register")}
-          onLogin={handleLogin}
-        />
-      ) : (
-        <RegisterScreen />
+  const router = useRouter();
 
-      )
-    ) : (
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.profileHeader}>
-          <View style={styles.profileAvatarWrapper}>
-            <Image
-              source={{
-                uri: "https://api.dicebear.com/7.x/avataaars/png?seed=John",
-              }}
-              style={styles.profileAvatar}
-            />
-          </View>
-          <Text style={styles.profileName}>John Doe</Text>
-          <Text style={styles.profileSubtitle}>Premium Member</Text>
-        </View>
+  const ProfileTab = () => {
 
-        <View style={styles.profileStatsRow}>
-          <View style={styles.profileStatPrimary}>
-            <Text style={styles.profileStatNumber}>12</Text>
-            <Text style={styles.profileStatLabel}>Total Scans</Text>
-          </View>
-          <View style={styles.profileStatSecondary}>
-            <Text style={styles.profileStatNumberSecondary}>4.9</Text>
-            <Text style={styles.profileStatLabelSecondary}>Skin Score</Text>
-          </View>
-        </View>
+    useEffect(() => {
+      if (!isLoggedIn) {
+        router.replace("/auth/login");
+      }
+    }, [isLoggedIn]);
 
-        <View style={styles.settingsCard}>
-          {[
-            { icon: <User size={18} color="#0f172a" />, label: "Personal Information" },
-            { icon: <FileText size={18} color="#0f172a" />, label: "Medical Records" },
-            { icon: <Bell size={18} color="#0f172a" />, label: "Notifications" },
-            { icon: <Settings size={18} color="#0f172a" />, label: "App Settings" },
-          ].map((item, idx) => (
-            <View
-              key={idx}
-              style={[
-                styles.settingsRow,
-                idx === 3 && { borderBottomWidth: 0 },
-              ]}
-            >
-              <View style={styles.settingsLeft}>
-                {item.icon}
-                <Text style={styles.settingsLabel}>{item.label}</Text>
-              </View>
-              <ChevronRight size={16} color="#cbd5f5" />
-            </View>
-          ))}
-        </View>
+    if (!isLoggedIn) return null;
 
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-          activeOpacity={0.85}
-        >
-          <LogOut size={18} color="#b91c1c" />
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
+    return (
+      <ScrollView>
+        {/* Profile UI here */}
       </ScrollView>
     );
+  };
+
+
+
 
   // ---------- MAIN ----------
   return (
@@ -749,6 +729,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
+
+  logoutIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "#fee2e2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+
   bellDot: {
     width: 8,
     height: 8,

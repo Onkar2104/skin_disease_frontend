@@ -1,4 +1,5 @@
 // app/auth/login.tsx
+
 import React, { useState } from "react";
 import {
   View,
@@ -6,40 +7,50 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Platform,
+  ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { Mail, Lock, Activity as ActivityIcon } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { loginUser } from "../../services/auth";
 
-const isWeb = Platform.OS === "web";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
-type LoginProps = {
-  onSwitch?: () => void;
-  onLogin?: (email: string, password: string) => void;
-};
-
-export default function LoginScreen({ onSwitch, onLogin }: LoginProps) {
+export default function LoginScreen() {
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = () => {
-    // TODO: call Django login API
-    console.log("Login:", email, password);
-    if (onLogin) {
-      onLogin(email, password);
-      return;
-    }
-    // after successful login go to home screen when no parent handler
-    router.replace("/");
-  };
+ const handleLogin = async () => {
+  if (!email || !password) {
+    setError("Email and password required");
+    return;
+  }
+
+  setLoading(true);
+  setError("");
+
+  try {
+    const res = await loginUser({ email, password });
+
+    await AsyncStorage.multiSet([
+      ["accessToken", res.access],
+      ["refreshToken", res.refresh],
+      ["user", JSON.stringify(res.user)],
+    ]);
+
+    router.replace("/"); // go to home
+  } catch (err: any) {
+    setError(err?.error || err?.detail || "Invalid email or password");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const goToRegister = () => {
-    if (onSwitch) {
-      onSwitch();
-      return;
-    }
     router.replace("/auth/register");
   };
 
@@ -72,6 +83,13 @@ export default function LoginScreen({ onSwitch, onLogin }: LoginProps) {
           />
         </View>
 
+        {error ? (
+          <Text style={{ color: "#dc2626", marginTop: 8, fontSize: 12 }}>
+            {error}
+          </Text>
+        ) : null}
+
+
         {/* Password */}
         <Text style={styles.label}>Password</Text>
         <View style={styles.inputRow}>
@@ -91,12 +109,20 @@ export default function LoginScreen({ onSwitch, onLogin }: LoginProps) {
         </View>
 
         <TouchableOpacity
-          style={styles.primaryButton}
-          activeOpacity={0.85}
+          style={[
+            styles.primaryButton,
+            loading && { opacity: 0.6 }
+          ]}
+          disabled={loading}
           onPress={handleLogin}
         >
-          <Text style={styles.primaryButtonText}>Sign In</Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryButtonText}>Sign In</Text>
+          )}
         </TouchableOpacity>
+
 
         <Text style={styles.switchText}>
           Don&apos;t have an account?{"  "}
