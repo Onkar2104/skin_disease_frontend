@@ -1,7 +1,6 @@
 // app/index.tsx
 
 import React, { useEffect, useState } from "react";
-import { saveScan } from "../../services/storage";
 import {
   View,
   Text,
@@ -13,7 +12,6 @@ import {
   Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { predictSkinDisease } from "../../services/api";
 import {
   Camera,
   Image as ImageIcon,
@@ -30,33 +28,22 @@ import {
   Star,
   Activity as ActivityIcon,
   LogOut,
+  Trash2,
+  X,  // Added for close icon
 } from "lucide-react-native";
 
 import { useRouter } from "expo-router";
 
 import { logoutUser } from "../../services/auth";
+import { runSkinPrediction } from "../../services/prediction";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { saveScanToBackend } from "../../services/scans";
+import { fetchScans, deleteScan } from "../../services/scans";
+import { downloadScanPDF } from "../../services/pdf";
+import { Modal, Button } from "react-native";
 
 
-
-const CLASS_FULL_FORM: Record<string, string> = {
-  akiec: "Actinic Keratoses and Intraepithelial Carcinoma",
-  bcc: "Basal Cell Carcinoma",
-  bkl: "Benign Keratosis-like Lesions",
-  df: "Dermatofibroma",
-  mel: "Melanoma",
-  nv: "Melanocytic Nevi",
-  scc: "Squamous Cell Carcinoma",
-  vasc: "Vascular Lesions",
-};
-
-
-const getSeverity = (label: string): "Low" | "Moderate" | "High" => {
-  if (["mel", "bcc", "scc"].includes(label)) return "High";
-  if (["akiec"].includes(label)) return "Moderate";
-  return "Low";
-};
 
 // ---------- Types ----------
 type Severity = "Low" | "Moderate" | "High";
@@ -80,10 +67,15 @@ interface Doctor {
 
 interface ScanHistory {
   id: number;
-  date: string;
   diagnosis: string;
+  confidence: string;
   severity: Severity;
+  advice: string;
+  is_safe: boolean;
+  image: string;
+  created_at: string;
 }
+
 
 
 
@@ -116,35 +108,31 @@ const DOCTORS: Doctor[] = [
   },
 ];
 
-const HISTORY: ScanHistory[] = [
-  { id: 101, date: "Today, 9:41 AM", diagnosis: "Eczema", severity: "Moderate" },
-  { id: 102, date: "Yesterday, 4:20 PM", diagnosis: "Acne Vulgaris", severity: "Low" },
-  { id: 103, date: "Oct 24, 2023", diagnosis: "Healthy Skin", severity: "Low" },
-  { id: 104, date: "Sep 12, 2023", diagnosis: "Heat Rash", severity: "High" },
-];
+// ---------- Main App Component ----------
 
 const isWeb = Platform.OS === "web";
 
 export default function App() {
 
+  const router = useRouter();
+
   useEffect(() => {
-  const restoreUser = async () => {
-    try {
-      const token = await AsyncStorage.getItem("accessToken");
-      const storedUser = await AsyncStorage.getItem("user");
+    const restoreUser = async () => {
+      try {
+        const token = await AsyncStorage.getItem("accessToken");
+        const storedUser = await AsyncStorage.getItem("user");
 
-      if (token && storedUser) {
-        setUser(JSON.parse(storedUser));
-        setIsLoggedIn(true);
+        if (token && storedUser) {
+          setUser(JSON.parse(storedUser));
+          setIsLoggedIn(true);
+        }
+      } catch (err) {
+        await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
       }
-    } catch (err) {
-      console.log("Failed to restore user:", err);
-      await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
-    }
-  };
+    };
 
-  restoreUser();
-}, []);
+    restoreUser();
+  }, []);
 
 
   const [user, setUser] = useState<{
@@ -205,97 +193,19 @@ export default function App() {
     }
   };
 
-
   const runPrediction = async (uri: string) => {
     setAnalyzing(true);
     setResult(null);
 
     try {
-      const data = await predictSkinDisease({ uri, name: "skin.jpg", type: "image/jpeg" });
-      console.log("Prediction raw:", data);
-
-      // try common response shapes
-      let payload: any = data?.result ?? data?.prediction ?? data ?? {};
-      if (Array.isArray(payload) && payload.length > 0) payload = payload[0];
-
-      // fallback into common wrapper fields
-      payload = payload ?? data?.predictions?.[0] ?? data?.results?.[0] ?? payload;
-
-      // extract label from many possible keys / nesting
-      let label: string = "";
-      if (typeof payload === "string") {
-        label = payload;
-      } else if (payload && typeof payload === "object") {
-        label =
-          (payload.class ??
-            payload.label ??
-            payload.diagnosis ??
-            payload.name ??
-            payload.label_name ??
-            payload.prediction ??
-            "") as string;
-
-        if (!label && Array.isArray(payload.labels) && payload.labels.length) {
-          label = payload.labels[0];
-        }
-
-        if (!label && Array.isArray(payload.predictions) && payload.predictions[0]) {
-          label =
-            payload.predictions[0].label ??
-            payload.predictions[0].class ??
-            payload.predictions[0].name ??
-            "";
-        }
-      }
-
-      label = (label || "").toLowerCase().trim();
-
-      // build diagnosis display name
-      const diagnosisFromPayload =
-        payload?.diagnosis_name ?? payload?.name ?? payload?.disease ?? "";
-      const diagnosis =
-        CLASS_FULL_FORM[label] ?? diagnosisFromPayload ?? label ?? "Unknown";
-
-      // normalize confidence
-      let confidenceVal: any =
-        payload?.confidence ??
-        payload?.probability ??
-        payload?.score ??
-        payload?.prob ??
-        payload?.conf ??
-        null;
-
-      if ((!confidenceVal || confidenceVal === null) && Array.isArray(payload?.predictions)) {
-        const p = payload.predictions[0] ?? {};
-        confidenceVal = p.confidence ?? p.probability ?? p.score ?? null;
-      }
-
-      let confidence = "--";
-      if (typeof confidenceVal === "number") {
-        confidence =
-          confidenceVal > 1
-            ? `${Math.round(confidenceVal)}%`
-            : `${Math.round(confidenceVal * 100)}%`;
-      } else if (typeof confidenceVal === "string") {
-        const n = parseFloat(confidenceVal as string);
-        if (!isNaN(n)) confidence = n > 1 ? `${Math.round(n)}%` : `${Math.round(n * 100)}%`;
-        else confidence = confidenceVal;
-      }
-
-      if (!diagnosis || diagnosis === "Unknown") {
-        console.warn("No diagnosis extracted from prediction response", { data });
-      }
-
-      setResult({
-        diagnosis,
-        confidence,
-        severity: (payload?.severity as Severity) ?? getSeverity(label),
-        advice: payload?.advice ?? payload?.recommendation ?? "Consult a dermatologist if symptoms persist.",
-        isSafe: !(label && ["mel", "bcc", "scc"].includes(label)),
+      const result = await runSkinPrediction({
+        uri,
+        name: "skin.jpg",
+        type: "image/jpeg",
       });
+      setResult(result);
     } catch (e) {
-      alert("Prediction failed. Check backend.");
-      console.error(e);
+      alert("Prediction failed");
     } finally {
       setAnalyzing(false);
     }
@@ -310,18 +220,6 @@ export default function App() {
 
 
   // ---------- Auth handlers (called by auth screens) ----------
-  const handleRegister = (data: {
-    name: string;
-    email: string;
-    pwd: string;
-    age: string;
-    gender: string;
-    skinType: string;
-  }) => {
-    // TODO: send data to Django API
-    console.log("Register:", data);
-    setIsLoggedIn(true);
-  };
 
   const handleLogout = async () => {
     await logoutUser();
@@ -331,18 +229,49 @@ export default function App() {
     setActiveTab("home");
   };
 
+  const [history, setHistory] = useState<ScanHistory[]>([]);
+  const [selectedScan, setSelectedScan] = useState<ScanHistory | null>(null);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchScans()
+        .then(setHistory)
+        // .catch(console.error);
+    }
+  }, [isLoggedIn]);
+
+
   const saveResult = async () => {
     if (!result || !imageUri) return;
 
-    await saveScan({
-      id: Date.now(),
-      date: new Date().toLocaleString(),
-      imageUri,
-      ...result,
-    });
+    if (!isLoggedIn) {
+      alert("Please login to save scans");
+      return;
+    }
 
-    alert("Scan saved");
+    try {
+      const scanPayload = {
+        diagnosis: result.diagnosis,
+        confidence: result.confidence,
+        severity: result.severity,
+        advice: result.advice,
+        isSafe: result.isSafe,
+      };
+
+      await saveScanToBackend(scanPayload, imageUri);
+
+      // ✅ refresh history from backend
+      const updated = await fetchScans();
+      setHistory(updated);
+
+      alert("Scan saved securely");
+    } catch (err) {
+      // console.error(err);
+      alert("Failed to save scan");
+    }
   };
+
+
 
 
   // ---------- Header ----------
@@ -379,6 +308,7 @@ export default function App() {
       </View>
     </View >
   );
+
 
   // ---------- Tabs ----------
   const HomeTab = () => (
@@ -540,42 +470,121 @@ export default function App() {
   );
 
   const HistoryTab = () => (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.historyTitle}>Scan History</Text>
-      {HISTORY.map((item) => {
-        const badgeStyle =
-          item.severity === "High"
-            ? styles.severityHigh
-            : item.severity === "Moderate"
-              ? styles.severityModerate
-              : styles.severityLow;
+    <>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {history.length === 0 && (
+          <Text style={{ textAlign: "center", color: "#64748b", marginTop: 20 }}>
+            No scans saved yet
+          </Text>
+        )}
 
-        return (
-          <View key={item.id} style={styles.historyCard}>
-            <View style={[styles.historyIcon, badgeStyle]}>
-              <Text style={styles.historyIconText}>
-                {item.diagnosis.charAt(0)}
-              </Text>
+        {history.map((item) => {
+          const badgeStyle =
+            item.severity === "High"
+              ? styles.severityHigh
+              : item.severity === "Moderate"
+                ? styles.severityModerate
+                : styles.severityLow;
+
+          return (
+            <View key={item.id} style={styles.historyCard}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                onPress={() => setSelectedScan(item)}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View style={[styles.historyIcon, badgeStyle]}>
+                    <Text style={styles.historyIconText}>
+                      {item.diagnosis.charAt(0)}
+                    </Text>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.historyDiagnosis}>
+                      {item.diagnosis}
+                    </Text>
+                    <Text style={styles.historyDateText}>
+                      {new Date(item.created_at).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => downloadScanPDF(item.id)}
+                style={{ paddingHorizontal: 10 }}
+              >
+                <FileText size={18} color="#0f766e" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={async () => {
+                  const confirmDelete =
+                    Platform.OS === "web"
+                      ? window.confirm("Delete this scan permanently?")
+                      : true;
+
+                  if (!confirmDelete) return;
+
+                  await deleteScan(item.id);
+                  setHistory((prev) =>
+                    prev.filter((s) => s.id !== item.id)
+                  );
+                  if (selectedScan?.id === item.id) {
+                    setSelectedScan(null);
+                  }
+                }}
+                style={{ paddingHorizontal: 10 }}
+              >
+                <Trash2 size={20} color="#dc2626" />
+              </TouchableOpacity>
+
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.historyDiagnosis}>{item.diagnosis}</Text>
-              <View style={styles.historyDateRow}>
-                <Calendar size={12} color="#9ca3af" />
-                <Text style={styles.historyDateText}>{item.date}</Text>
-              </View>
-            </View>
-            <ChevronRight size={18} color="#cbd5f5" />
+          );
+        })}
+      </ScrollView>
+
+      {/* ✅ MODAL MUST BE HERE */}
+      <Modal
+        visible={!!selectedScan}
+        animationType="slide"
+        onRequestClose={() => setSelectedScan(null)}
+      >
+        {selectedScan && (
+          <View style={{ flex: 1 }}>
+            <TouchableOpacity
+              onPress={() => setSelectedScan(null)}
+              style={styles.closeButton}
+            >
+              <X size={24} color="#000000" />
+            </TouchableOpacity>
+            <ScrollView style={{ padding: 20 }}>
+              <Image
+                source={{ uri: selectedScan.image }}
+                style={{ height: 220, borderRadius: 16, marginBottom: 16 }}
+              />
+
+              <Text style={styles.title}>{selectedScan.diagnosis}</Text>
+
+              <DetailRow label="Confidence" value={selectedScan.confidence} />
+              <DetailRow label="Severity" value={selectedScan.severity} />
+              <DetailRow
+                label="Date"
+                value={new Date(selectedScan.created_at).toLocaleString()}
+              />
+
+              <Text style={styles.adviceTitle}>Medical Advice</Text>
+              <Text style={styles.advice}>{selectedScan.advice}</Text>
+            </ScrollView>
           </View>
-        );
-      })}
-    </ScrollView>
+        )}
+      </Modal>
+    </>
   );
 
-  const router = useRouter();
 
   const ProfileTab = () => {
 
@@ -1152,6 +1161,35 @@ const styles = StyleSheet.create({
     color: "#075985",
   },
 
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 8,
+  },
+
+  adviceTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 12,
+  },
+
+  advice: {
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 18,
+  },
+
+  closeButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 1,
+    padding: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 20,
+  },
+
 });
-// stray placeholder removed — real `runPrediction` is implemented above
 

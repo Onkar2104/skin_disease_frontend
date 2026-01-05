@@ -69,27 +69,6 @@ export async function registerUser(data: {
 }
 
 
-/* ---------------- LOGOUT ---------------- */
-// export async function logoutUser(token?: string) {
-//   const res = await fetch(
-//     `${DJANGO_API.BASE_URL}/api/auth/logout/`,
-//     {
-//       method: "POST",
-//       headers: token
-//         ? { Authorization: `Bearer ${token}` }
-//         : undefined,
-//     }
-//   );
-
-//   if (!res.ok) {
-//     const err = await res.json();
-//     throw err;
-//   }
-
-//   return res.json();
-// }
-
-
 /* ---------------- LOGIN ---------------- */
 export async function loginUser(data: {
   email: string;
@@ -115,6 +94,12 @@ export async function logoutUser() {
   await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
 }
 
-export async function getAccessToken() {
-  return AsyncStorage.getItem("accessToken");
+export async function getAccessToken(): Promise<string> {
+  const token = await AsyncStorage.getItem("accessToken");
+
+  if (!token || token === "undefined" || token === "null") {
+    throw new Error("Access token missing or invalid");
+  }
+
+  return token;
 }
