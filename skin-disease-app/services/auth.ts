@@ -9,7 +9,7 @@ export async function sendRegisterOtp(data: {
   form.append("email", data.email);
 
   const res = await fetch(
-    `${DJANGO_API.BASE_URL}/api/auth/register/send-otp/`,
+    `${DJANGO_API.BASE_URL}/api/auth/otp/email/send/`,
     {
       method: "POST",
       body: form,
@@ -31,7 +31,7 @@ export async function verifyRegisterOtp(data: {
   form.append("otp", data.otp);
 
   const res = await fetch(
-    `${DJANGO_API.BASE_URL}/api/auth/register/verify-otp/`,
+    `${DJANGO_API.BASE_URL}/api/auth/register/verify/`,
     {
       method: "POST",
       body: form,
@@ -45,20 +45,17 @@ export async function verifyRegisterOtp(data: {
 
 /* ---------------- FINAL REGISTER ---------------- */
 export async function registerUser(data: {
-  email: string;
-  password: string;
   full_name: string;
-  age: string;
-  gender: string;
-  skin_type: string;
+  email: string;
+  phone: string;
+  password: string;
+  confirm_password: string;
 }) {
   const res = await fetch(
     `${DJANGO_API.BASE_URL}/api/auth/register/`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }
   );
@@ -83,16 +80,24 @@ export async function loginUser(data: {
   const json = await res.json();
   if (!res.ok) throw json;
 
-  // 🔐 Store tokens
-  await AsyncStorage.setItem("accessToken", json.access);
-  await AsyncStorage.setItem("refreshToken", json.refresh);
+  // ✅ SINGLE SOURCE OF TRUTH
+  await AsyncStorage.multiSet([
+    ["accessToken", json.access],
+    ["refreshToken", json.refresh],
+    ["user", JSON.stringify(json.user ?? {})],
+  ]);
 
   return json;
 }
 
 export async function logoutUser() {
-  await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
+  await AsyncStorage.multiRemove([
+    "accessToken",
+    "refreshToken",
+    "user",
+  ]);
 }
+
 
 export async function getAccessToken(): Promise<string> {
   const token = await AsyncStorage.getItem("accessToken");

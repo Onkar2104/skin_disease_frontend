@@ -42,6 +42,8 @@ import { saveScanToBackend } from "../../services/scans";
 import { fetchScans, deleteScan } from "../../services/scans";
 import { downloadScanPDF } from "../../services/pdf";
 import { Modal, Button } from "react-native";
+import { authFetch } from "@/services/api";
+import UserProfileScreen from "./profile";
 
 
 
@@ -116,23 +118,27 @@ export default function App() {
 
   const router = useRouter();
 
+  const restoreUser = async () => {
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) return;
+
+      const res = await authFetch("/api/auth/profile/");
+      const userData = await res.json();
+
+      setUser(userData);
+      setIsLoggedIn(true);
+    } catch {
+      await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
+    }
+  };
+
+
   useEffect(() => {
-    const restoreUser = async () => {
-      try {
-        const token = await AsyncStorage.getItem("accessToken");
-        const storedUser = await AsyncStorage.getItem("user");
-
-        if (token && storedUser) {
-          setUser(JSON.parse(storedUser));
-          setIsLoggedIn(true);
-        }
-      } catch (err) {
-        await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
-      }
-    };
-
     restoreUser();
   }, []);
+
+
 
 
   const [user, setUser] = useState<{
@@ -236,7 +242,7 @@ export default function App() {
     if (isLoggedIn) {
       fetchScans()
         .then(setHistory)
-        // .catch(console.error);
+      // .catch(console.error);
     }
   }, [isLoggedIn]);
 
@@ -281,7 +287,7 @@ export default function App() {
         <Text style={styles.appTitle}>DermaCare AI</Text>
         {isLoggedIn && user && (
           <Text style={styles.appSubtitle}>
-            Hello, {user.full_name.split(" ")[0]} 👋
+            Hello, {user?.full_name?.split(" ")?.[0] || "there"} 👋
           </Text>
         )}
       </View>
@@ -587,7 +593,6 @@ export default function App() {
 
 
   const ProfileTab = () => {
-
     useEffect(() => {
       if (!isLoggedIn) {
         router.replace("/auth/login");
@@ -596,12 +601,9 @@ export default function App() {
 
     if (!isLoggedIn) return null;
 
-    return (
-      <ScrollView>
-        {/* Profile UI here */}
-      </ScrollView>
-    );
+    return <UserProfileScreen />;
   };
+
 
 
 
