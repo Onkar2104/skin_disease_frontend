@@ -7,19 +7,24 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export async function authFetch(path: string, options: RequestInit = {}) {
   const token = await AsyncStorage.getItem("accessToken");
 
-  if (!token) {
-    throw new Error("No access token found");
+  const headers: Record<string, string> = {
+    ...(options.headers as any),
+  };
+
+  // ✅ Attach token ONLY if it exists
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
-  return fetch(`${DJANGO_API.BASE_URL}${path}`, {
+  const res = await fetch(`${DJANGO_API.BASE_URL}${path}`, {
     ...options,
-    headers: {
-      ...(options.headers || {}),
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
   });
-}
 
+  // ❌ DO NOT throw before request
+  // Let caller handle 401
+  return res;
+}
 
 // Predict Skin Disease
 export async function predictSkinDisease({

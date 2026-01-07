@@ -19,7 +19,7 @@ export async function fetchScans() {
   }
 
   if (data.results) {
-    return data.results;
+    return data.results; 
   }
 
   if (data.data) {

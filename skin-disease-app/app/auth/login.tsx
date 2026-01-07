@@ -24,31 +24,25 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
- const handleLogin = async () => {
-  if (!email || !password) {
-    setError("Email and password required");
-    return;
-  }
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setError("Email and password required");
+      return;
+    }
 
-  setLoading(true);
-  setError("");
+    setLoading(true);
+    setError("");
 
-  try {
-    const res = await loginUser({ email, password });
+    try {
+      await loginUser({ email, password });
 
-    await AsyncStorage.multiSet([
-      ["accessToken", res.access],
-      ["refreshToken", res.refresh],
-      ["user", JSON.stringify(res.user)],
-    ]);
-
-    router.replace("/"); // go to home
-  } catch (err: any) {
-    setError(err?.error || err?.detail || "Invalid email or password");
-  } finally {
-    setLoading(false);
-  }
-};
+      router.replace("/"); // go to home
+    } catch (err: any) {
+      setError(err?.error || err?.detail || "Invalid email or password");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const goToRegister = () => {
     router.replace("/auth/register");
