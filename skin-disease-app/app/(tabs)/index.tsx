@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   Image,
@@ -20,9 +21,6 @@ import {
   ScanLine,
   Home,
   FileText,
-  Settings,
-  Calendar,
-  ChevronRight,
   Bell,
   MapPin,
   Star,
@@ -31,6 +29,8 @@ import {
   Trash2,
   X,  // Added for close icon
 } from "lucide-react-native";
+
+import * as Location from "expo-location";
 
 import { useRouter } from "expo-router";
 
@@ -41,7 +41,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { saveScanToBackend } from "../../services/scans";
 import { fetchScans, deleteScan } from "../../services/scans";
 import { downloadScanPDF } from "../../services/pdf";
-import { Modal, Button } from "react-native";
+import { Modal } from "react-native";
 import { authFetch } from "@/services/api";
 import UserProfileScreen from "./profile";
 
@@ -117,6 +117,9 @@ const isWeb = Platform.OS === "web";
 export default function App() {
 
   const router = useRouter();
+
+  const [locationModal, setLocationModal] = useState(false);
+  const [manualCity, setManualCity] = useState("");
 
   const restoreUser = async () => {
     try {
@@ -264,7 +267,7 @@ export default function App() {
         isSafe: result.isSafe,
       };
 
-      await saveScanToBackend(scanPayload, imageUri);
+      const savedScan = await saveScanToBackend(scanPayload, imageUri);
 
       // ✅ refresh history from backend
       const updated = await fetchScans();
@@ -402,18 +405,28 @@ export default function App() {
 
 
                 <View style={styles.resultActionsRow}>
-                  <TouchableOpacity
+                  {/* <TouchableOpacity
                     style={styles.retakeButton}
                     onPress={resetScan}
                   >
                     <RotateCcw size={14} color="#4b5563" />
                     <Text style={styles.retakeText}>Retake</Text>
+                  </TouchableOpacity> */}
+                  {/* {result.severity !== "Low" && ( */}
+                  <TouchableOpacity
+                    style={styles.findDoctorButton}
+                    onPress={() => {
+                      if (!isLoggedIn) {
+                        router.push("/auth/login");
+                        return;
+                      }
+                      setLocationModal(true);
+                    }}
+                  >
+                    <Text style={styles.findDoctorText}>Find Doctor</Text>
                   </TouchableOpacity>
-                  {result.severity !== "Low" && (
-                    <TouchableOpacity style={styles.findDoctorButton}>
-                      <Text style={styles.findDoctorText}>Find Doctor</Text>
-                    </TouchableOpacity>
-                  )}
+
+                  {/* // )} */}
                 </View>
               </View>
             )}
@@ -471,6 +484,8 @@ export default function App() {
             </View>
           </View>
         ))}
+
+
       </View>
     </ScrollView>
   );
@@ -650,6 +665,75 @@ export default function App() {
           />
         </View>
       </View>
+
+      <Modal visible={locationModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Choose Location</Text>
+            <TextInput
+              placeholder="Enter city (e.g. Pune)"
+              value={manualCity}
+              onChangeText={setManualCity}
+              style={{
+                borderWidth: 1,
+                borderColor: "#e5e7eb",
+                borderRadius: 8,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            />
+
+
+            <TouchableOpacity
+              style={styles.findDoctorButton}
+              onPress={async () => {
+                setLocationModal(false);
+
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== "granted") {
+                  alert("Location permission denied");
+                  return;
+                }
+
+                const loc = await Location.getCurrentPositionAsync({});
+                router.push({
+                  pathname: "/hospitals",
+                  params: {
+                    diagnosis: result?.diagnosis,
+                    lat: loc.coords.latitude,
+                    lon: loc.coords.longitude,
+                  },
+                });
+
+              }}
+            >
+              <Text style={styles.findDoctorText}>Use Live Location</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.findDoctorButton, { marginTop: 10 }]}
+              onPress={() => {
+                if (!manualCity.trim()) {
+                  alert("Please enter a city name");
+                  return;
+                }
+
+                setLocationModal(false);
+                router.push({
+                  pathname: "/hospitals",
+                  params: {
+                    diagnosis: result?.diagnosis,
+                    city: manualCity.trim(),
+                  },
+                });
+              }}
+            >
+              <Text style={styles.findDoctorText}>Enter City Manually</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -903,6 +987,7 @@ const styles = StyleSheet.create({
   retakeText: { fontSize: 12, fontWeight: "600", color: "#4b5563" },
   findDoctorButton: {
     flex: 1,
+    marginTop: 8,
     borderRadius: 10,
     backgroundColor: "#0f766e",
     justifyContent: "center",
@@ -1192,6 +1277,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderRadius: 20,
   },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalBox: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+
 
 });
 
