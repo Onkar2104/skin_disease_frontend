@@ -9,17 +9,59 @@ import { DJANGO_API } from "@/constants/api";
 
 const { width } = Dimensions.get("window");
 
+interface Doctor {
+    id: string;
+    name: string;
+    specialty: string;
+    rating: number;
+    experience_years: number;
+    distance_km: number;
+    why_recommended: string;
+}
+
 interface Hospital {
     name: string;
     rating: number;
     distance_km: number;
     maps_url: string;
+    why_recommended?: string;
+    top_doctors?: Doctor[];
 }
+
+
+const DoctorCard = ({ doctor }: { doctor: Doctor }) => {
+    return (
+        <View style={styles.doctorCard}>
+            <View style={styles.doctorAvatar}>
+                <FontAwesome5 name="user-md" size={18} color="#0f766e" />
+            </View>
+
+            <View style={{ flex: 1 }}>
+                <Text style={styles.doctorName}>{doctor.name}</Text>
+                <Text style={styles.doctorMeta}>
+                    {doctor.specialty} • {doctor.experience_years} yrs
+                </Text>
+
+                <View style={styles.doctorStatsRow}>
+                    <Ionicons name="star" size={12} color="#f59e0b" />
+                    <Text style={styles.doctorStatText}>{doctor.rating}</Text>
+                </View>
+
+                {renderWhyRecommended(doctor.why_recommended)}
+
+            </View>
+        </View>
+    );
+};
+
 
 // --- ANIMATED CARD COMPONENT ---
 const HospitalCard = ({ item, index }: { item: Hospital; index: number }) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const translateY = useRef(new Animated.Value(50)).current;
+    const [showDoctors, setShowDoctors] = useState(false);
+    console.log("WHY:", item.why_recommended);
+
 
     useEffect(() => {
         Animated.parallel([
@@ -58,12 +100,39 @@ const HospitalCard = ({ item, index }: { item: Hospital; index: number }) => {
                         <Ionicons name="star" size={14} color="#B45309" />
                         <Text style={styles.ratingText}>{item.rating}</Text>
                     </View>
-                    
+
                     <View style={[styles.badge, styles.distanceBadge]}>
                         <MaterialCommunityIcons name="map-marker-distance" size={14} color="#0f766e" />
                         <Text style={styles.distanceText}>{item.distance_km.toFixed(1)} km away</Text>
                     </View>
                 </View>
+
+                {/* Why Recommended */}
+                {renderWhyRecommended(item.why_recommended)}
+
+
+                {/* Top Doctors */}
+                {item.top_doctors && item.top_doctors.length > 0 && (
+                    <View style={styles.topDoctorsContainer}>
+                        <TouchableOpacity
+                            onPress={() => setShowDoctors(!showDoctors)}
+                            style={styles.topDoctorsHeader}
+                        >
+                            <Text style={styles.topDoctorsTitle}>Top Doctors</Text>
+                            <Ionicons
+                                name={showDoctors ? "chevron-up" : "chevron-down"}
+                                size={18}
+                                color="#0f766e"
+                            />
+                        </TouchableOpacity>
+
+                        {showDoctors &&
+                            item.top_doctors.map((doc) => (
+                                <DoctorCard key={doc.id} doctor={doc} />
+                            ))}
+                    </View>
+                )}
+
 
                 {/* Gradient Button */}
                 <TouchableOpacity
@@ -115,6 +184,33 @@ const SkeletonCard = () => {
     );
 };
 
+const renderWhyRecommended = (text?: string) => {
+    if (!text) return null;
+
+    const cleaned = text
+        .replace(/^Recommended because it has\s*/i, "")
+        .replace(/\.$/, "");
+
+    const points = cleaned.split(", ");
+
+    return (
+        <View style={styles.whyContainer}>
+            <Text style={styles.whyTitle}>Why recommended</Text>
+            {points.map((p, i) => (
+                <View key={i} style={styles.whyRow}>
+                    <MaterialCommunityIcons
+                        name="check-circle"
+                        size={14}
+                        color="#0f766e"
+                    />
+                    <Text style={styles.whyText}>{p}</Text>
+                </View>
+            ))}
+        </View>
+    );
+};
+
+
 export default function Hospitals() {
     const params = useLocalSearchParams();
     const router = useRouter();
@@ -140,6 +236,7 @@ export default function Hospitals() {
                     },
                     body: JSON.stringify({
                         diagnosis: params.diagnosis,
+                        severity: params.severity,
                         lat: params.lat ? Number(params.lat) : undefined,
                         lon: params.lon ? Number(params.lon) : undefined,
                         city: params.city || undefined,
@@ -163,7 +260,7 @@ export default function Hospitals() {
     return (
         <View style={styles.mainContainer}>
             <StatusBar barStyle="light-content" backgroundColor="#0f766e" />
-            
+
             {/* Background Header Decoration */}
             <View style={styles.topDecoration}>
                 <LinearGradient
@@ -172,7 +269,7 @@ export default function Hospitals() {
                 />
                 <View style={styles.headerContent}>
                     <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                         <Ionicons name="arrow-back" size={24} color="#fff" />
+                        <Ionicons name="arrow-back" size={24} color="#fff" />
                     </TouchableOpacity>
                     <View>
                         <Text style={styles.screenTitle}>Nearby Care</Text>
@@ -359,4 +456,108 @@ const styles = StyleSheet.create({
         color: '#94A3B8',
         marginTop: 8,
     },
+
+    whyContainer: {
+        backgroundColor: "#F0FDFA",
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: "#CCFBF1",
+    },
+    whyTitle: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: "#0f766e",
+        marginBottom: 6,
+    },
+    whyRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        marginBottom: 4,
+    },
+    whyText: {
+        fontSize: 13,
+        color: "#334155",
+        flex: 1,
+    },
+
+    topDoctorsContainer: {
+        marginBottom: 16,
+    },
+
+    topDoctorsHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 8,
+    },
+
+    topDoctorsTitle: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#0f766e",
+    },
+
+    doctorCard: {
+        flexDirection: "row",
+        gap: 10,
+        padding: 10,
+        borderRadius: 12,
+        backgroundColor: "#ffffff",
+        borderWidth: 1,
+        borderColor: "#e5e7eb",
+        marginBottom: 8,
+    },
+
+    doctorAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "#ecfeff",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+
+    doctorName: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#111827",
+    },
+
+    doctorMeta: {
+        fontSize: 12,
+        color: "#6b7280",
+        marginBottom: 4,
+    },
+
+    doctorStatsRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        marginBottom: 4,
+    },
+
+    doctorStatText: {
+        fontSize: 12,
+        color: "#374151",
+        marginRight: 6,
+    },
+
+    doctorWhyBox: {
+        backgroundColor: "#f0fdfa",
+        borderRadius: 8,
+        padding: 6,
+        borderWidth: 1,
+        borderColor: "#ccfbf1",
+    },
+
+    doctorWhyText: {
+        fontSize: 11,
+        color: "#065f46",
+    },
+
+
+
 });

@@ -700,15 +700,21 @@ export default function App() {
                   return;
                 }
 
-                const loc = await Location.getCurrentPositionAsync({});
+                const loc = await Location.getCurrentPositionAsync({
+                  accuracy: Location.Accuracy.Highest,
+                  mayShowUserSettingsDialog: true,
+                });
                 router.push({
                   pathname: "/hospitals",
                   params: {
                     diagnosis: result?.diagnosis,
+                    severity: result?.severity,
                     lat: loc.coords.latitude,
                     lon: loc.coords.longitude,
+                    accuracy: loc.coords.accuracy, 
                   },
                 });
+
 
               }}
             >
