@@ -124,15 +124,20 @@ export default function App() {
   const restoreUser = async () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
+
       if (!token) return;
 
       const res = await authFetch("/api/auth/profile/");
-      const userData = await res.json();
 
+      if (!res.ok) {
+        throw new Error("Profile fetch failed");
+      }
+
+      const userData = await res.json();
       setUser(userData);
       setIsLoggedIn(true);
-    } catch {
-      await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
+    } catch (e) {
+      await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
     }
   };
 
