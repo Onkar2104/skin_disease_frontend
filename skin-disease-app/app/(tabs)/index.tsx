@@ -44,7 +44,7 @@ import { downloadScanPDF } from "../../services/pdf";
 import { Modal } from "react-native";
 import { authFetch } from "@/services/api";
 import UserProfileScreen from "./profile";
-
+import ChatWidget from "@/components/ChatBot/ChatBubble";
 
 
 // ---------- Types ----------
@@ -671,6 +671,13 @@ export default function App() {
         </View>
       </View>
 
+      {result && (
+        <ChatWidget
+          disease={result.diagnosis}
+          autoOpen={true}
+        />
+      )}
+
       <Modal visible={locationModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -711,7 +718,7 @@ export default function App() {
                     severity: result?.severity,
                     lat: loc.coords.latitude,
                     lon: loc.coords.longitude,
-                    accuracy: loc.coords.accuracy, 
+                    accuracy: loc.coords.accuracy,
                   },
                 });
 
