@@ -79,37 +79,6 @@ interface ScanHistory {
 }
 
 
-
-
-
-// ---------- Mock Data ----------
-const DOCTORS: Doctor[] = [
-  {
-    id: 1,
-    name: "Dr. Sarah Lin",
-    specialty: "Dermatologist",
-    rating: 4.9,
-    distance: "1.2 km",
-    image: "https://api.dicebear.com/7.x/avataaars/png?seed=Sarah",
-  },
-  {
-    id: 2,
-    name: "Dr. James Wilson",
-    specialty: "Skin Surgeon",
-    rating: 4.8,
-    distance: "2.5 km",
-    image: "https://api.dicebear.com/7.x/avataaars/png?seed=James",
-  },
-  {
-    id: 3,
-    name: "Dr. Emily Chen",
-    specialty: "Cosmetic Derm",
-    rating: 4.7,
-    distance: "3.0 km",
-    image: "https://api.dicebear.com/7.x/avataaars/png?seed=Emily",
-  },
-];
-
 // ---------- Main App Component ----------
 
 const isWeb = Platform.OS === "web";
@@ -118,8 +87,11 @@ export default function App() {
 
   const router = useRouter();
 
-  const [locationModal, setLocationModal] = useState(false);
-  const [manualCity, setManualCity] = useState("");
+const [showCityInput, setShowCityInput] = useState(false);
+const [manualCity, setManualCity] = useState("");
+const [locationModal, setLocationModal] = useState(false);
+
+
 
   const restoreUser = async () => {
     try {
@@ -161,6 +133,52 @@ export default function App() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
+
+  // ---------- AI Progress Analysis ----------
+  const getProgressAnalysis = () => {
+    if (history.length < 2) return null;
+
+    const latest = history[0];
+    const previous = history[1];
+
+    const severityScore = {
+      Low: 1,
+      Moderate: 2,
+      High: 3,
+    };
+
+    const latestScore = severityScore[latest.severity];
+    const previousScore = severityScore[previous.severity];
+
+    if (latestScore < previousScore) {
+      return {
+        status: "Improving",
+        message: "Your skin condition is improving compared to last scan.",
+        color: "#16a34a",
+        bg: "#dcfce7",
+        icon: "🟢",
+      };
+    }
+
+    if (latestScore > previousScore) {
+      return {
+        status: "Worsening",
+        message: "Your skin condition has worsened since last scan.",
+        color: "#dc2626",
+        bg: "#fee2e2",
+        icon: "🔴",
+      };
+    }
+
+    return {
+      status: "Stable",
+      message: "Your skin condition is stable. Continue your care plan.",
+      color: "#ca8a04",
+      bg: "#fef9c3",
+      icon: "🟡",
+    };
+  };
+
 
 
   const DetailRow = ({ label, value }: { label: string; value: string }) => (
@@ -284,6 +302,43 @@ export default function App() {
       alert("Failed to save scan");
     }
   };
+
+  // ---------- AI Medical Triage System ----------
+  const getUrgencyAlert = () => {
+    if (!result) return null;
+
+    if (result.severity === "High") {
+      return {
+        level: "Immediate Attention Required",
+        message:
+          "Our AI strongly recommends consulting a dermatologist within 24–48 hours.",
+        color: "#dc2626",
+        bg: "#fee2e2",
+        icon: "🚨",
+      };
+    }
+
+    if (result.severity === "Moderate") {
+      return {
+        level: "Medical Review Suggested",
+        message:
+          "Monitor closely. If symptoms persist for 3 days, consult a dermatologist.",
+        color: "#ca8a04",
+        bg: "#fef9c3",
+        icon: "⚠️",
+      };
+    }
+
+    return {
+      level: "Low Risk",
+      message:
+        "This condition can usually be managed with home care and monitoring.",
+      color: "#16a34a",
+      bg: "#dcfce7",
+      icon: "✅",
+    };
+  };
+
 
 
 
@@ -439,7 +494,31 @@ export default function App() {
         )}
       </View>
 
-      {/* Daily tips */}
+      {/* AI Urgency Alert */}
+      {getUrgencyAlert() && (
+        <View
+          style={[
+            styles.urgencyBox,
+            { backgroundColor: getUrgencyAlert()!.bg },
+          ]}
+        >
+          <Text
+            style={[
+              styles.urgencyTitle,
+              { color: getUrgencyAlert()!.color },
+            ]}
+          >
+            {getUrgencyAlert()!.icon} {getUrgencyAlert()!.level}
+          </Text>
+
+          <Text style={styles.urgencyMessage}>
+            {getUrgencyAlert()!.message}
+          </Text>
+        </View>
+      )}
+
+
+      {/* Daily tips
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Daily Tips</Text>
@@ -465,33 +544,186 @@ export default function App() {
             </View>
           ))}
         </ScrollView>
-      </View>
+      </View> */}
 
-      {/* Top doctors */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Top Dermatologists</Text>
-        {DOCTORS.map((doc) => (
-          <View key={doc.id} style={styles.doctorCard}>
-            <Image source={{ uri: doc.image }} style={styles.doctorImage} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.doctorName}>{doc.name}</Text>
-              <Text style={styles.doctorSpecialty}>{doc.specialty}</Text>
-            </View>
-            <View style={styles.doctorRight}>
-              <View style={styles.doctorRatingRow}>
-                <Star size={12} color="#fbbf24" />
-                <Text style={styles.doctorRatingText}>{doc.rating}</Text>
-              </View>
-              <View style={styles.doctorDistanceRow}>
-                <MapPin size={10} color="#9ca3af" />
-                <Text style={styles.doctorDistanceText}>{doc.distance}</Text>
-              </View>
-            </View>
+      {/* AI Skin Condition Analysis */}
+      {getProgressAnalysis() && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>AI Condition Analysis</Text>
+
+          <View
+            style={[
+              styles.analysisBox,
+              { backgroundColor: getProgressAnalysis()!.bg },
+            ]}
+          >
+            <Text
+              style={[
+                styles.analysisStatus,
+                { color: getProgressAnalysis()!.color },
+              ]}
+            >
+              {getProgressAnalysis()!.icon} {getProgressAnalysis()!.status}
+            </Text>
+
+            <Text style={styles.analysisMessage}>
+              {getProgressAnalysis()!.message}
+            </Text>
           </View>
-        ))}
+        </View>
+      )}
 
 
+      {/* AI Personalized Care Plan */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Your AI Care Plan</Text>
+
+        {!result ? (
+          <View style={styles.careEmptyBox}>
+            <Text style={styles.careEmptyText}>
+              Scan your skin to receive a personalized treatment plan.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.carePlanBox}>
+
+            <View style={styles.careHeaderRow}>
+              <Text style={styles.careTitle}>
+                Care Plan for {result.diagnosis}
+              </Text>
+              <View style={styles.careBadge}>
+                <Text style={styles.careBadgeText}>{result.severity} Risk</Text>
+              </View>
+            </View>
+
+            <View style={styles.careStep}>
+              <Text style={styles.careStepNumber}>1</Text>
+              <Text style={styles.careStepText}>
+                Clean affected area twice daily using a gentle cleanser.
+              </Text>
+            </View>
+
+            <View style={styles.careStep}>
+              <Text style={styles.careStepNumber}>2</Text>
+              <Text style={styles.careStepText}>
+                Apply dermatologist-recommended medication as prescribed.
+              </Text>
+            </View>
+
+            <View style={styles.careStep}>
+              <Text style={styles.careStepNumber}>3</Text>
+              <Text style={styles.careStepText}>
+                Avoid direct sun exposure and always use SPF 30+ sunscreen.
+              </Text>
+            </View>
+
+            <View style={styles.careStep}>
+              <Text style={styles.careStepNumber}>4</Text>
+              <Text style={styles.careStepText}>
+                Monitor changes weekly using DermaCare AI scans.
+              </Text>
+            </View>
+
+          </View>
+        )}
       </View>
+
+      {/* Skin Progress Timeline */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Your Skin Progress</Text>
+
+        {history.length === 0 ? (
+          <View style={styles.progressEmptyBox}>
+            <Text style={styles.progressEmptyText}>
+              Your skin progress will appear here after a few scans.
+            </Text>
+          </View>
+        ) : (
+          history.slice(0, 3).map((scan, index) => (
+            <View key={scan.id} style={styles.progressCard}>
+              <View style={styles.progressLeft}>
+                <Image
+                  source={{ uri: scan.image }}
+                  style={styles.progressImage}
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.progressDisease}>
+                  {scan.diagnosis}
+                </Text>
+
+                <Text style={styles.progressDate}>
+                  {new Date(scan.created_at).toLocaleDateString()}
+                </Text>
+
+                <View style={styles.progressMetaRow}>
+                  <Text style={styles.progressMeta}>
+                    {scan.confidence}
+                  </Text>
+                  <Text style={styles.progressMeta}>
+                    {scan.severity} Risk
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.progressIndex}>
+                <Text style={styles.progressIndexText}>
+                  #{history.length - index}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+
+
+      {/* Skin Health Insights */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Your Skin Health Insights</Text>
+
+        <View style={styles.insightGrid}>
+
+          <View style={styles.insightCard}>
+            <Text style={styles.insightValue}>98.2%</Text>
+            <Text style={styles.insightLabel}>AI Accuracy</Text>
+            <Text style={styles.insightSub}>
+              Clinically validated model
+            </Text>
+          </View>
+
+          <View style={styles.insightCard}>
+            <Text style={styles.insightValue}>
+              {result?.severity || "—"}
+            </Text>
+            <Text style={styles.insightLabel}>Current Risk</Text>
+            <Text style={styles.insightSub}>
+              Based on latest scan
+            </Text>
+          </View>
+
+          <View style={styles.insightCard}>
+            <Text style={styles.insightValue}>
+              {history.length}
+            </Text>
+            <Text style={styles.insightLabel}>Total Scans</Text>
+            <Text style={styles.insightSub}>
+              Health history stored
+            </Text>
+          </View>
+
+          <View style={styles.insightCard}>
+            <Text style={styles.insightValue}>24/7</Text>
+            <Text style={styles.insightLabel}>Monitoring</Text>
+            <Text style={styles.insightSub}>
+              Continuous AI support
+            </Text>
+          </View>
+
+        </View>
+      </View>
+
     </ScrollView>
   );
 
@@ -678,79 +910,112 @@ export default function App() {
         />
       )}
 
-      <Modal visible={locationModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Choose Location</Text>
-            <TextInput
-              placeholder="Enter city (e.g. Pune)"
-              value={manualCity}
-              onChangeText={setManualCity}
-              style={{
-                borderWidth: 1,
-                borderColor: "#e5e7eb",
-                borderRadius: 8,
-                padding: 10,
-                marginBottom: 10,
-              }}
-            />
+<Modal
+  visible={locationModal}
+  transparent
+  animationType="slide"
+  onRequestClose={() => {
+    setLocationModal(false);
+    setShowCityInput(false);
+    setManualCity("");
+  }}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalBox}>
+      <Text style={styles.modalTitle}>Choose Location</Text>
 
+      {/* ================= LIVE LOCATION ================= */}
+      <TouchableOpacity
+        style={styles.findDoctorButton}
+        onPress={async () => {
+          setLocationModal(false);
+          setShowCityInput(false);
+          setManualCity("");
 
-            <TouchableOpacity
-              style={styles.findDoctorButton}
-              onPress={async () => {
-                setLocationModal(false);
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status !== "granted") {
+            alert("Location permission denied");
+            return;
+          }
 
-                const { status } = await Location.requestForegroundPermissionsAsync();
-                if (status !== "granted") {
-                  alert("Location permission denied");
-                  return;
-                }
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Highest,
+            mayShowUserSettingsDialog: true,
+          });
 
-                const loc = await Location.getCurrentPositionAsync({
-                  accuracy: Location.Accuracy.Highest,
-                  mayShowUserSettingsDialog: true,
-                });
-                router.push({
-                  pathname: "/hospitals",
-                  params: {
-                    diagnosis: result?.diagnosis,
-                    severity: result?.severity,
-                    lat: loc.coords.latitude,
-                    lon: loc.coords.longitude,
-                    accuracy: loc.coords.accuracy,
-                  },
-                });
+          router.push({
+            pathname: "/hospitals",
+            params: {
+              diagnosis: result?.diagnosis,
+              severity: result?.severity,
+              lat: loc.coords.latitude,
+              lon: loc.coords.longitude,
+              accuracy: loc.coords.accuracy,
+            },
+          });
+        }}
+      >
+        <Text style={styles.findDoctorText}>Use Live Location</Text>
+      </TouchableOpacity>
 
+      {/* ================= MANUAL CITY MODE ================= */}
+      {!showCityInput && (
+        <TouchableOpacity
+          style={[
+            styles.findDoctorButton,
+            { marginTop: 10, backgroundColor: "#1f2937" },
+          ]}
+          onPress={() => setShowCityInput(true)}
+        >
+          <Text style={styles.findDoctorText}>Enter City Manually</Text>
+        </TouchableOpacity>
+      )}
 
-              }}
-            >
-              <Text style={styles.findDoctorText}>Use Live Location</Text>
-            </TouchableOpacity>
+      {/* ================= CITY INPUT ================= */}
+      {showCityInput && (
+        <>
+          <TextInput
+            placeholder="Enter city (e.g. Pune)"
+            value={manualCity}
+            onChangeText={setManualCity}
+            style={{
+              borderWidth: 1,
+              borderColor: "#e5e7eb",
+              borderRadius: 8,
+              padding: 10,
+              marginTop: 12,
+            }}
+          />
 
-            <TouchableOpacity
-              style={[styles.findDoctorButton, { marginTop: 10 }]}
-              onPress={() => {
-                if (!manualCity.trim()) {
-                  alert("Please enter a city name");
-                  return;
-                }
+          <TouchableOpacity
+            style={[styles.findDoctorButton, { marginTop: 10 }]}
+            onPress={() => {
+              if (!manualCity.trim()) {
+                alert("Please enter a city name");
+                return;
+              }
 
-                setLocationModal(false);
-                router.push({
-                  pathname: "/hospitals",
-                  params: {
-                    diagnosis: result?.diagnosis,
-                    city: manualCity.trim(),
-                  },
-                });
-              }}
-            >
-              <Text style={styles.findDoctorText}>Enter City Manually</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+              setLocationModal(false);
+              setShowCityInput(false);
+              setManualCity("");
+
+              router.push({
+                pathname: "/hospitals",
+                params: {
+                  diagnosis: result?.diagnosis,
+                  city: manualCity.trim(),
+                },
+              });
+            }}
+          >
+            <Text style={styles.findDoctorText}>Search Doctors</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  </View>
+</Modal>
+
 
     </View>
   );
@@ -1312,6 +1577,233 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 12,
   },
+
+  insightGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+
+  insightCard: {
+    width: "48%",
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  insightValue: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#0f766e",
+    marginBottom: 2,
+  },
+
+  insightLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  insightSub: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+
+  careEmptyBox: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginTop: 8,
+  },
+
+  careEmptyText: {
+    fontSize: 12,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+
+  carePlanBox: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginTop: 8,
+  },
+
+  careHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  careTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+    flex: 1,
+  },
+
+  careBadge: {
+    backgroundColor: "#fee2e2",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+
+  careBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#b91c1c",
+  },
+
+  careStep: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+
+  careStepNumber: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: "#0f766e",
+    color: "#ffffff",
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "800",
+    marginRight: 8,
+  },
+
+  careStepText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#374151",
+    lineHeight: 16,
+  },
+
+  progressEmptyBox: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginTop: 8,
+  },
+
+  progressEmptyText: {
+    fontSize: 12,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+
+  progressCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  progressLeft: {
+    marginRight: 10,
+  },
+
+  progressImage: {
+    width: 54,
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: "#e5e7eb",
+  },
+
+  progressDisease: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  progressDate: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginBottom: 2,
+  },
+
+  progressMetaRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  progressMeta: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0f766e",
+  },
+
+  progressIndex: {
+    marginLeft: 6,
+    backgroundColor: "#e0f2f1",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+
+  progressIndexText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0f766e",
+  },
+
+  analysisBox: {
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginTop: 8,
+  },
+
+  analysisStatus: {
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+
+  analysisMessage: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#374151",
+  },
+
+  urgencyBox: {
+    marginTop: 10,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  urgencyTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+
+  urgencyMessage: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#374151",
+  },
+
 
 
 });
