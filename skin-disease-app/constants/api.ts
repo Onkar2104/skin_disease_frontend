@@ -1,9 +1,8 @@
 // API configuration
 export const DJANGO_API = {
-  PREDICT_URL: "http://10.236.7.151:8000/api/predict/skin-disease/",
-  // If your Django API requires a key, set it here. Keep empty string for no key.
+  PREDICT_URL: "http://10.112.66.151:8000/api/predict/skin-disease/",
   API_KEY: "",
 
-  BASE_URL: "http://10.236.7.151:8000",
+  BASE_URL: "http://10.112.66.151:8000",     //modify according to your IP
   
 };
